@@ -22,21 +22,24 @@ namespace Instruments.DynamicQueries.ExpressionBuilders
 
             Expression summaryExpression = null;
 
+            var rootParam = Expression.Parameter(rootType, "p0");
+
             foreach (var field in filterModel.Fields)
             {
                 var parsedPath = ParsePath(field, rootType);
-                var partsQueue = CreateExpressionsQueue(parsedPath, rootType);
-                
-                var lambda = BuildLambdaExpression(partsQueue, filterModel.Value);
+                var partsQueue = CreateExpressionsQueue(parsedPath, rootType, rootParam);
+
+                var expression = BuildExpressionForField(partsQueue, filterModel.Value);
 
                 summaryExpression = summaryExpression == null
-                    ? (Expression)lambda
-                    : Expression.AndAlso(summaryExpression, lambda);
+                    ? expression
+                    : Expression.OrElse(summaryExpression, expression);
             }
 
             var expressionArgs = new[] { rootType };
 
-            var unaryExpression = Expression.Quote(summaryExpression);
+            var lambda = Expression.Lambda(summaryExpression, rootParam);
+            var unaryExpression = Expression.Quote(lambda);
             var resultExpression = Expression.Call(typeof(Queryable), "Where", expressionArgs.ToArray(), collection.Expression, unaryExpression);
 
             collection = collection.Provider.CreateQuery<TEntity>(resultExpression);
@@ -44,7 +47,7 @@ namespace Instruments.DynamicQueries.ExpressionBuilders
             return collection;
         }
 
-        private LambdaExpression BuildLambdaExpression(Queue<ExpressionPart> restExpressionParts, string value)
+        private Expression BuildExpressionForField(Queue<ExpressionPart> restExpressionParts, string value)
         {
             var currentExpressionPart = restExpressionParts.Dequeue();
 
@@ -59,27 +62,29 @@ namespace Instruments.DynamicQueries.ExpressionBuilders
 
                 var comparingExpression = BuildComparationExpression(value, functionExpression);
 
-                return Expression.Lambda(comparingExpression, currentExpressionPart.Parameter);
+                return comparingExpression;
             }
 
             if (currentExpressionPart.LastPartElement.PropertyType == PropertyType.Collection)
             {
                 var collectionElementsType = GetCollectionElementType(currentExpressionPart.CollectionElement);
 
-                var lambdaExpressionForNestedElements = BuildLambdaExpression(restExpressionParts, value);
+                var parameterForNestedElements = restExpressionParts.Peek().Parameter;
+                var expressionForNestedElements = BuildExpressionForField(restExpressionParts, value);
+                var lambdaExpressionForNestedElements = Expression.Lambda(expressionForNestedElements, parameterForNestedElements);
 
                 var genericTypeArgs = new[] { collectionElementsType };
 
                 var joinedExpression = Expression.Call(typeof(Enumerable), "Any", genericTypeArgs, currentExpressionPart.MemberAccess, lambdaExpressionForNestedElements);
 
-                return Expression.Lambda(joinedExpression, currentExpressionPart.Parameter);
+                return joinedExpression;
             }
 
             if (currentExpressionPart.LastPartElement.PropertyType == PropertyType.Simple)
             {
                 var comparingExpression = BuildComparationExpression(value, currentExpressionPart.MemberAccess);
 
-                return Expression.Lambda(comparingExpression, currentExpressionPart.Parameter);
+                return comparingExpression;
             }
 
             return null;

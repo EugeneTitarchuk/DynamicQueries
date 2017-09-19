@@ -18,7 +18,7 @@ namespace Instruments.DynamicQueries.ExpressionBuilders
             return propertyPath;
         }
 
-        protected Queue<ExpressionPart> CreateExpressionsQueue(ParsedPropertyPath propertyPath, Type collectionEntityType)
+        protected Queue<ExpressionPart> CreateExpressionsQueue(ParsedPropertyPath propertyPath, Type collectionEntityType, ParameterExpression commonParameter = null)
         {
             //fill initial list
             var elements = new Queue<ParsedPropertyElement>();
@@ -26,7 +26,7 @@ namespace Instruments.DynamicQueries.ExpressionBuilders
             {
                 elements.Enqueue(element);
             }
-           
+
             //create resulting list
             var expressionParts = new Queue<ExpressionPart>();
 
@@ -35,7 +35,7 @@ namespace Instruments.DynamicQueries.ExpressionBuilders
             var index = 0;
             while (elements.Count > 0)
             {
-                var expressionPart = CreateExpressionPart(lastCollectionEntityType, elements, index);
+                var expressionPart = CreateExpressionPart(lastCollectionEntityType, elements, index, commonParameter);
 
                 if (expressionPart.CollectionElement != null)
                     lastCollectionEntityType = GetCollectionElementType(expressionPart.CollectionElement);
@@ -46,7 +46,7 @@ namespace Instruments.DynamicQueries.ExpressionBuilders
 
             return expressionParts;
         }
-        
+
         protected MethodInfo GetMethodInfo(ParsedPropertyElement collectionElement, KnownFunctions function)
         {
             var method = collectionElement.PropertyInfo.PropertyType.GetMethod(function.ToString());
@@ -63,22 +63,24 @@ namespace Instruments.DynamicQueries.ExpressionBuilders
             throw new DynamicQueryException($"Unsupported collection type {collectionElement.PropertyInfo.Name} of collection {collectionElement.PropertyName}");
         }
 
-        protected ExpressionPart CreateExpressionPart(Type lastCollectionElementType, Queue<ParsedPropertyElement> elements, int index)
+        protected ExpressionPart CreateExpressionPart(Type lastCollectionElementType, Queue<ParsedPropertyElement> elements, int index, ParameterExpression rootParameter)
         {
-            var collectionLambdaParameter = Expression.Parameter(lastCollectionElementType, "p" + index);
+            ParameterExpression collectionLambdaParameter = index == 0 && rootParameter != null
+                ? rootParameter
+                : Expression.Parameter(lastCollectionElementType, "p" + index);
 
             ParsedPropertyElement element;
             MemberExpression memberAccess = null;
 
             ParsedPropertyElement collectionElement = null;
-            
+
             while (true)
             {
                 element = elements.Dequeue();
 
                 if (element.PropertyType == PropertyType.Collection)
                     collectionElement = element;
-                
+
                 if (element.PropertyType == PropertyType.CollectionFunction)
                     break;
 
@@ -100,11 +102,6 @@ namespace Instruments.DynamicQueries.ExpressionBuilders
                 Parameter = collectionLambdaParameter
             };
         }
-
-
-
-
-
 
     }
 }
