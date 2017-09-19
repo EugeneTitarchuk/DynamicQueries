@@ -3,3 +3,6 @@
 ################################################################################
 
 /.vs
+/Instruments/.vs/Instruments/v15
+/Instruments/Instruments.DynamicQueries/bin/Debug/netstandard2.0
+/Instruments/Instruments.DynamicQueries/obj
